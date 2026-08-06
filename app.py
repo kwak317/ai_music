@@ -149,6 +149,35 @@ def analyze(uploaded_file):
     return {"file": uploaded_file, "y": y, "sr": sr, "stats": stats, "probabilities": predict(vector)}
 
 
+def report_frame(results) -> pd.DataFrame:
+    """Create a portable, one-row-per-file summary for CSV export."""
+    rows = []
+    for result in results:
+        probabilities = result["probabilities"] or []
+        top_genre, top_probability = probabilities[0] if probabilities else ("모델 없음", None)
+        rows.append({
+            "파일명": result["file"].name,
+            "예측 장르": top_genre,
+            "신뢰도": round(top_probability, 4) if top_probability is not None else None,
+            "추정 BPM": round(result["stats"]["tempo"], 1),
+            "길이(초)": round(len(result["y"]) / result["sr"], 1),
+            "스펙트럼 중심(Hz)": round(result["stats"]["spectral_centroid_mean"], 1),
+            "RMS 에너지": round(result["stats"]["rms_mean"], 4),
+        })
+    return pd.DataFrame(rows)
+
+
+def report_download(results, key: str) -> None:
+    report = report_frame(results)
+    st.download_button(
+        "📥 분석 결과 CSV 다운로드",
+        data=report.to_csv(index=False).encode("utf-8-sig"),
+        file_name="music-lens-analysis.csv",
+        mime="text/csv",
+        key=key,
+    )
+
+
 def render_single_result(result, top_n: int) -> None:
     uploaded, y, sr = result["file"], result["y"], result["sr"]
     stats, probabilities = result["stats"], result["probabilities"]
@@ -167,6 +196,7 @@ def render_single_result(result, top_n: int) -> None:
         metric_a.metric("추정 BPM", f"{stats['tempo']:.0f}")
         metric_b.metric("길이", f"{len(y) / sr:.1f}초")
         st.caption(f"스펙트럼 중심: {stats['spectral_centroid_mean']:.0f} Hz · RMS 에너지: {stats['rms_mean']:.3f}")
+        report_download([result], key=f"download_{uploaded.name}")
     with right:
         st.subheader("멜스펙트로그램")
         figure = make_mel_figure(y, sr, uploaded.name)
@@ -176,8 +206,13 @@ def render_single_result(result, top_n: int) -> None:
 
 def render_lesson6() -> None:
     st.markdown("""<div class="hero"><div class="eyebrow">LESSON 6 · STREAMLIT BASICS</div>
-    <h1>음악 장르 예측기</h1><p>WAV 파일 한 곡을 올리고, AI의 Top-3 예측과 멜스펙트로그램을 확인하세요.</p></div>""", unsafe_allow_html=True)
-    uploaded = st.file_uploader("WAV 파일 업로드", type=["wav"], key="lesson6_upload")
+    <h1>음악 장르 예측기</h1><p>오디오 한 곡을 올리고, AI의 Top-3 예측과 멜스펙트로그램을 확인하세요.</p></div>""", unsafe_allow_html=True)
+    uploaded = st.file_uploader(
+        "오디오 파일 업로드",
+        type=["wav", "mp3", "m4a", "flac", "ogg"],
+        help="WAV, MP3, M4A, FLAC, OGG 파일을 올릴 수 있습니다.",
+        key="lesson6_upload",
+    )
     if uploaded:
         try:
             with st.spinner("음악을 분석하는 중..."):
@@ -185,7 +220,7 @@ def render_lesson6() -> None:
         except Exception as error:
             st.error(f"오디오를 읽지 못했습니다: {error}")
     else:
-        st.info("6강 실습: WAV 파일 하나를 업로드하세요.")
+        st.info("6강 실습: 분석할 오디오 파일 하나를 업로드하세요.")
 
 
 def render_lesson7() -> None:
@@ -193,7 +228,12 @@ def render_lesson7() -> None:
     <h1>장르 예측기 v2</h1><p>여러 곡의 신뢰도를 비교하고, 예측 이력을 관리하세요.</p></div>""", unsafe_allow_html=True)
     prediction_tab, history_tab = st.tabs(["🎵 멀티파일 예측", "📋 예측 이력"])
     with prediction_tab:
-        uploads = st.file_uploader("오디오 파일 업로드 (여러 개 가능)", type=["wav"], accept_multiple_files=True, key="lesson7_upload")
+        uploads = st.file_uploader(
+            "오디오 파일 업로드 (여러 개 가능)",
+            type=["wav", "mp3", "m4a", "flac", "ogg"],
+            accept_multiple_files=True,
+            key="lesson7_upload",
+        )
         if uploads:
             results = []
             with st.spinner("여러 곡을 분석하는 중..."):
@@ -208,15 +248,19 @@ def render_lesson7() -> None:
                 render_single_result(results[0], top_n=10)
             elif results:
                 st.subheader(f"{len(results)}개 곡 장르 확률 비교")
+                summary = report_frame(results)
+                metrics = summary[["파일명", "추정 BPM", "길이(초)", "스펙트럼 중심(Hz)", "RMS 에너지"]]
+                st.dataframe(metrics, hide_index=True, use_container_width=True)
+                report_download(results, key="download_comparison")
                 if all(item["probabilities"] for item in results):
                     comparison = pd.DataFrame({item["file"].name: dict(item["probabilities"]) for item in results}).fillna(0)
                     st.bar_chart(comparison, color=["#9b8cff", "#55d6be", "#ffba6a", "#ff7c9d"])
                     rows = [{"파일명": item["file"].name, "1위 장르": item["probabilities"][0][0], "신뢰도": f"{item['probabilities'][0][1]:.1%}"} for item in results]
                     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
                 else:
-                    st.warning("비교 차트는 모델 파일 3개를 추가하면 표시됩니다.")
+                    st.warning("모델 파일을 추가하면 장르 확률 비교 차트도 표시됩니다.")
         else:
-            st.info("7강 실습: WAV 파일을 여러 개 업로드해 비교해 보세요.")
+            st.info("7강 실습: 여러 오디오 파일을 업로드해 비교해 보세요.")
     with history_tab:
         if st.session_state.history:
             st.dataframe(pd.DataFrame(st.session_state.history), hide_index=True, use_container_width=True)
