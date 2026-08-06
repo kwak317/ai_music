@@ -63,6 +63,29 @@ def inject_style() -> None:
         [data-testid="stExpander"] { background: rgba(23, 25, 47, .72); border: 1px solid #343653; border-radius: 12px; }
         .stButton > button, .stDownloadButton > button, .stLinkButton > a { border-radius: 9px; font-weight: 650; min-height: 2.45rem; }
         [data-testid="stAudio"] { border: 1px solid #343653; border-radius: 12px; overflow: hidden; }
+        .stApp { background: #f2f4f6; color: #191f28; }
+        .block-container, [data-testid="stMainBlockContainer"] { max-width: 1120px; padding-top: 2.75rem; padding-bottom: 5rem; }
+        [data-testid="stSidebar"] { background: #ffffff; border-right: 1px solid #e5e8eb; }
+        .hero { padding: .35rem 0 1.75rem; }
+        .hero h1 { color: #191f28; font-size: clamp(2.1rem, 4vw, 3.25rem); line-height: 1.14; letter-spacing: -.06em; margin: 0; }
+        .hero p { color: #6b7684; font-size: 1.03rem; line-height: 1.65; margin: .65rem 0 0; max-width: 42rem; }
+        .eyebrow { color: #3182f6; font-weight: 800; letter-spacing: .08em; font-size: .73rem; }
+        h2 { color: #191f28; font-size: 1.42rem !important; letter-spacing: -.035em; margin-top: 2.1rem !important; margin-bottom: .35rem !important; }
+        h3 { color: #191f28; font-size: 1.08rem !important; }
+        .result-card { background: linear-gradient(135deg, #3b8cff, #2874e8); border: 0; box-shadow: 0 10px 24px rgba(49,130,246,.22); border-radius: 18px; padding: 1.2rem 1.35rem; }
+        .result-card h2 { color: white; margin: .25rem 0 .15rem !important; font-size: 2.05rem !important; }
+        .result-card .muted { color: rgba(255,255,255,.78); }
+        .muted { color: #6b7684; }
+        [data-testid="stMetric"] { background: #fff; border: 1px solid #e5e8eb; border-radius: 14px; box-shadow: 0 2px 7px rgba(0,0,0,.025); padding: .75rem .9rem; }
+        [data-testid="stMetricLabel"] { font-size: .77rem; color: #6b7684; }
+        [data-testid="stMetricValue"] { color: #191f28; font-size: 1.25rem; }
+        [data-testid="stDataFrame"] { border: 1px solid #e5e8eb; border-radius: 14px; overflow: hidden; background: #fff; }
+        [data-testid="stExpander"] { background: #fff; border: 1px solid #e5e8eb; border-radius: 12px; }
+        [data-testid="stVerticalBlockBorderWrapper"] { background: #fff; border-color: #e5e8eb !important; border-radius: 14px; }
+        .stButton > button, .stDownloadButton > button, .stLinkButton > a { border-radius: 10px; font-weight: 700; min-height: 2.45rem; }
+        [data-testid="stAudio"] { background: #fff; border: 1px solid #e5e8eb; border-radius: 12px; overflow: hidden; }
+        [data-testid="stTabs"] button { font-weight: 700; color: #6b7684; }
+        [data-testid="stTabs"] button[aria-selected="true"] { color: #3182f6; }
         </style>""",
         unsafe_allow_html=True,
     )
@@ -131,6 +154,7 @@ def make_radar_figure(results):
     angles += angles[:1]
     fig, ax = plt.subplots(figsize=(5.0, 4.25), dpi=130, subplot_kw={"polar": True})
     colors = ["#9b8cff", "#55d6be", "#ffba6a", "#ff7c9d"]
+    colors = ["#3182f6", "#00a86b", "#ff9500", "#f04452"]
     for index, result in enumerate(results):
         profile = music_profile(result["stats"])
         values = [profile[label] for label in profile_keys] + [profile[profile_keys[0]]]
@@ -144,8 +168,14 @@ def make_radar_figure(results):
     ax.set_facecolor("#17192f")
     fig.patch.set_facecolor("#17192f")
     ax.tick_params(colors="#f4f3ff", labelsize=9, pad=8)
+    ax.set_yticks([25, 50, 75], ["25", "50", "75"], color="#8b95a1", fontsize=8)
+    ax.grid(color="#dfe4ea", alpha=1)
+    ax.set_facecolor("#ffffff")
+    fig.patch.set_facecolor("#ffffff")
+    ax.tick_params(colors="#333d4b", labelsize=9, pad=8)
     if len(results) > 1:
         ax.legend(loc="upper left", bbox_to_anchor=(1.08, 1.1), frameon=False, labelcolor="#f4f3ff")
+        ax.legend(loc="upper left", bbox_to_anchor=(1.08, 1.1), frameon=False, labelcolor="#333d4b")
     fig.tight_layout()
     return fig
 
@@ -282,6 +312,7 @@ def render_timeline(result) -> None:
     with right:
         st.caption("구간별 예측 신뢰도")
         st.bar_chart(timeline.set_index("구간")[["신뢰도"]], color="#9b8cff", height=270)
+        st.bar_chart(timeline.set_index("구간")[["신뢰도"]], color="#3182f6", height=270)
 
 
 def share_payload(result) -> str:
@@ -374,6 +405,7 @@ def render_single_result(result, top_n: int) -> None:
             st.markdown(f'<div class="result-card"><span class="muted">TOP MATCH</span><h2>{GENRE_ICON.get(genre, "🎵")} {genre.upper()}</h2><p class="muted">신뢰도 {confidence:.1%}</p></div>', unsafe_allow_html=True)
             table = pd.DataFrame(probabilities[:top_n], columns=["장르", "확률"])
             st.bar_chart(table.set_index("장르"), color="#9b8cff", height=250)
+            st.bar_chart(table.set_index("장르"), color="#3182f6", height=250)
         else:
             st.warning("모델 파일 3개를 추가하면 실제 장르 예측이 표시됩니다.")
         metric_a, metric_b = st.columns(2)
@@ -447,6 +479,7 @@ def render_lesson7() -> None:
                 if all(item["probabilities"] for item in results):
                     comparison = pd.DataFrame({item["file"].name: dict(item["probabilities"]) for item in results}).fillna(0)
                     st.bar_chart(comparison, color=["#9b8cff", "#55d6be", "#ffba6a", "#ff7c9d"], height=310)
+                    st.bar_chart(comparison, color=["#3182f6", "#00a86b", "#ff9500", "#f04452"], height=310)
                     rows = [{"파일명": item["file"].name, "1위 장르": item["probabilities"][0][0], "신뢰도": f"{item['probabilities'][0][1]:.1%}"} for item in results]
                     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
                 else:
