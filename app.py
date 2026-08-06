@@ -11,6 +11,7 @@ import os
 import tempfile
 import base64
 import json
+from html import escape
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
@@ -89,8 +90,20 @@ def inject_style() -> None:
         [data-testid="stVerticalBlockBorderWrapper"] { background: #fff; border-color: #e5e8eb !important; border-radius: 14px; }
         .stButton > button, .stDownloadButton > button, .stLinkButton > a { border-radius: 10px; font-weight: 700; min-height: 2.45rem; }
         [data-testid="stAudio"] { background: #fff; border: 1px solid #e5e8eb; border-radius: 12px; overflow: hidden; }
+        [data-testid="stFileUploader"] { background: #fff; border: 1px solid #e5e8eb; border-radius: 16px; padding: .35rem .8rem .8rem; box-shadow: 0 3px 10px rgba(0,0,0,.025); }
         [data-testid="stTabs"] button { font-weight: 700; color: #6b7684; }
         [data-testid="stTabs"] button[aria-selected="true"] { color: #3182f6; }
+        .onboarding { background: linear-gradient(135deg, #ffffff, #f7faff); border: 1px solid #dce9fc; border-radius: 18px; padding: 1.5rem 1.6rem; margin: 1.2rem 0 .8rem; }
+        .onboarding h3 { margin: 0 0 .35rem !important; font-size: 1.25rem !important; }
+        .onboarding p { color: #6b7684; margin: 0; line-height: 1.6; }
+        .guide-card { background: #fff; border: 1px solid #e5e8eb; border-radius: 14px; min-height: 132px; padding: 1rem 1.05rem; }
+        .guide-number { color: #3182f6; font-weight: 800; font-size: .78rem; letter-spacing: .04em; }
+        .guide-card h4 { color: #191f28; margin: .35rem 0; font-size: 1rem; }
+        .guide-card p { color: #6b7684; font-size: .86rem; line-height: 1.5; margin: 0; }
+        .history-card { background: #fff; border: 1px solid #e5e8eb; border-radius: 12px; padding: .85rem 1rem; }
+        .history-card strong { color: #191f28; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .history-card span { color: #3182f6; font-size: .85rem; font-weight: 700; }
+        .history-card small { color: #6b7684; }
         </style>""",
         unsafe_allow_html=True,
     )
@@ -432,6 +445,56 @@ def render_single_result(result, top_n: int) -> None:
         render_share_link(result)
 
 
+def render_recent_history() -> None:
+    """Show a compact, friendly summary instead of a blank first screen."""
+    history = st.session_state.history[-3:][::-1]
+    if not history:
+        return
+    st.markdown("#### 최근 분석")
+    columns = st.columns(len(history))
+    for column, item in zip(columns, history):
+        with column:
+            st.markdown(
+                f"<div class='history-card'><strong>{escape(item['파일명'])}</strong>"
+                f"<span>{GENRE_ICON.get(item['1위 장르'], '🎵')} {escape(item['1위 장르'].upper())}</span><br>"
+                f"<small>신뢰도 {item['신뢰도']}</small></div>",
+                unsafe_allow_html=True,
+            )
+
+
+def render_onboarding(multiple: bool = False) -> None:
+    mode_text = "여러 곡을 올려" if multiple else "한 곡을 올려"
+    st.markdown(
+        f"<div class='onboarding'><div class='eyebrow'>MUSIC LENS START</div>"
+        f"<h3>{mode_text} 음악의 특징을 확인해 보세요.</h3>"
+        "<p>장르 예측부터 BPM·에너지·스펙트럼 분석까지, 결과를 한눈에 정리해 드립니다.</p></div>",
+        unsafe_allow_html=True,
+    )
+    guides = [
+        ("01", "오디오 업로드", "WAV, MP3, M4A 등 파일을 선택하세요."),
+        ("02", "AI 특징 분석", "리듬·음색·주파수 특징을 3초 단위로 살펴봅니다."),
+        ("03", "결과 비교", "장르, 신뢰도, BPM과 그래프를 한 화면에서 확인하세요."),
+    ]
+    columns = st.columns(3, gap="medium")
+    for column, (number, title, description) in zip(columns, guides):
+        with column:
+            st.markdown(
+                f"<div class='guide-card'><div class='guide-number'>{number}</div>"
+                f"<h4>{title}</h4><p>{description}</p></div>",
+                unsafe_allow_html=True,
+            )
+    st.markdown("#### 분석 준비 상태")
+    status, detail = st.columns([1, 2.4], gap="medium")
+    with status:
+        if load_models() is None:
+            st.warning("모델 연결 필요")
+        else:
+            st.success("AI 모델 연결됨")
+    with detail:
+        st.caption("지원 형식: WAV · MP3 · M4A · FLAC · OGG  |  최대 200MB  |  최대 30초 분석")
+    render_recent_history()
+
+
 def render_lesson6() -> None:
     st.markdown("""<div class="hero"><div class="eyebrow">LESSON 6 · STREAMLIT BASICS</div>
     <h1>음악 장르 예측기</h1><p>오디오 한 곡을 올리고, AI의 Top-3 예측과 멜스펙트로그램을 확인하세요.</p></div>""", unsafe_allow_html=True)
@@ -449,6 +512,7 @@ def render_lesson6() -> None:
             st.error(f"오디오를 읽지 못했습니다: {error}")
     else:
         st.info("6강 실습: 분석할 오디오 파일 하나를 업로드하세요.")
+        render_onboarding()
 
 
 def render_lesson7() -> None:
@@ -491,6 +555,7 @@ def render_lesson7() -> None:
                     st.warning("모델 파일을 추가하면 장르 확률 비교 차트도 표시됩니다.")
         else:
             st.info("7강 실습: 여러 오디오 파일을 업로드해 비교해 보세요.")
+            render_onboarding(multiple=True)
     with history_tab:
         if st.session_state.history:
             st.dataframe(pd.DataFrame(st.session_state.history), hide_index=True, use_container_width=True)
