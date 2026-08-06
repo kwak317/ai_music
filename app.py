@@ -43,15 +43,26 @@ st.set_page_config(page_title="Music Lens | 장르 분석", page_icon="🎧", la
 def inject_style() -> None:
     st.markdown(
         """<style>
-        .stApp { background: radial-gradient(circle at 8% 0%, #26204e 0, #101124 38%, #090a13 100%); color: #f4f3ff; }
-        [data-testid="stSidebar"] { background: #121326; }
-        .hero { padding: 2.2rem 0 1.2rem; }
-        .hero h1 { font-size: clamp(2.3rem, 5vw, 4.6rem); letter-spacing: -0.06em; margin: 0; }
-        .hero p { color: #b9b6d6; font-size: 1.12rem; margin-top: .65rem; }
-        .eyebrow { color: #a79aff; font-weight: 700; letter-spacing: .1em; font-size: .78rem; }
-        .result-card { background: linear-gradient(135deg, #2d2666, #171a39); border: 1px solid #4a4485; border-radius: 18px; padding: 1.4rem; }
-        .result-card h2 { margin: 0; font-size: 2rem; }
-        .muted { color: #aaa7c5; }
+        .stApp { background: radial-gradient(circle at 5% 0%, #272050 0, #101124 40%, #090a13 100%); color: #f4f3ff; }
+        .block-container, [data-testid="stMainBlockContainer"] { max-width: 1180px; padding-top: 2.5rem; padding-bottom: 5rem; }
+        [data-testid="stSidebar"] { background: #101122; border-right: 1px solid #292b48; }
+        [data-testid="stSidebar"] * { color: #e8e7f5; }
+        .hero { padding: .5rem 0 1.65rem; }
+        .hero h1 { font-size: clamp(2.15rem, 4vw, 3.45rem); line-height: 1.12; letter-spacing: -0.055em; margin: 0; }
+        .hero p { color: #b9b6d6; font-size: 1.02rem; line-height: 1.65; margin: .65rem 0 0; max-width: 42rem; }
+        .eyebrow { color: #aea3ff; font-weight: 750; letter-spacing: .11em; font-size: .72rem; }
+        h2 { font-size: 1.45rem !important; letter-spacing: -.035em; margin-top: 1.65rem !important; margin-bottom: .4rem !important; }
+        h3 { font-size: 1.12rem !important; }
+        .result-card { background: linear-gradient(135deg, #30286e, #1b1d43); border: 1px solid #51489a; box-shadow: 0 12px 30px rgba(0,0,0,.18); border-radius: 16px; padding: 1.15rem 1.25rem; }
+        .result-card h2 { margin: .25rem 0 .2rem !important; font-size: 2.05rem !important; }
+        .muted { color: #bbb8d9; }
+        [data-testid="stMetric"] { background: rgba(29, 31, 58, .75); border: 1px solid #343653; border-radius: 12px; padding: .7rem .85rem; }
+        [data-testid="stMetricLabel"] { font-size: .78rem; color: #aaa7c5; }
+        [data-testid="stMetricValue"] { font-size: 1.3rem; }
+        [data-testid="stDataFrame"] { border: 1px solid #343653; border-radius: 12px; overflow: hidden; }
+        [data-testid="stExpander"] { background: rgba(23, 25, 47, .72); border: 1px solid #343653; border-radius: 12px; }
+        .stButton > button, .stDownloadButton > button, .stLinkButton > a { border-radius: 9px; font-weight: 650; min-height: 2.45rem; }
+        [data-testid="stAudio"] { border: 1px solid #343653; border-radius: 12px; overflow: hidden; }
         </style>""",
         unsafe_allow_html=True,
     )
@@ -95,10 +106,10 @@ def extract_features(y: np.ndarray, sr: int) -> tuple[np.ndarray, dict[str, floa
 def make_mel_figure(y: np.ndarray, sr: int, title: str):
     mel = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128, fmax=8000)
     mel_db = librosa.power_to_db(mel, ref=np.max)
-    fig, ax = plt.subplots(figsize=(8, 3.8))
+    fig, ax = plt.subplots(figsize=(6.7, 3.45), dpi=130)
     image = librosa.display.specshow(mel_db, sr=sr, x_axis="time", y_axis="mel", fmax=8000, cmap="magma", ax=ax)
     fig.colorbar(image, ax=ax, format="%+2.0f dB", pad=0.02)
-    ax.set_title(title, loc="left", fontweight="bold")
+    ax.set_title(title, loc="left", fontweight="bold", fontsize=11)
     fig.tight_layout()
     return fig
 
@@ -113,24 +124,26 @@ def music_profile(stats: dict[str, float]) -> dict[str, float]:
 
 
 def make_radar_figure(results):
-    labels = ["BPM", "에너지", "밝기", "리듬감"]
+    # Matplotlib's Linux runtime may lack Korean fonts; use universal labels here.
+    labels = ["BPM", "ENERGY", "BRIGHT", "RHYTHM"]
+    profile_keys = ["BPM", "에너지", "밝기", "리듬감"]
     angles = np.linspace(0, 2 * np.pi, len(labels), endpoint=False).tolist()
     angles += angles[:1]
-    fig, ax = plt.subplots(figsize=(6, 4.8), subplot_kw={"polar": True})
+    fig, ax = plt.subplots(figsize=(5.0, 4.25), dpi=130, subplot_kw={"polar": True})
     colors = ["#9b8cff", "#55d6be", "#ffba6a", "#ff7c9d"]
     for index, result in enumerate(results):
         profile = music_profile(result["stats"])
-        values = [profile[label] for label in labels] + [profile[labels[0]]]
+        values = [profile[label] for label in profile_keys] + [profile[profile_keys[0]]]
         color = colors[index % len(colors)]
         ax.plot(angles, values, color=color, linewidth=2, label=result["file"].name)
         ax.fill(angles, values, color=color, alpha=0.14)
     ax.set_xticks(angles[:-1], labels)
     ax.set_ylim(0, 100)
-    ax.set_yticks([25, 50, 75, 100], ["25", "50", "75", "100"], color="#aaa7c5")
+    ax.set_yticks([25, 50, 75], ["25", "50", "75"], color="#aaa7c5", fontsize=8)
     ax.grid(color="#66618a", alpha=0.45)
     ax.set_facecolor("#17192f")
     fig.patch.set_facecolor("#17192f")
-    ax.tick_params(colors="#f4f3ff")
+    ax.tick_params(colors="#f4f3ff", labelsize=9, pad=8)
     if len(results) > 1:
         ax.legend(loc="upper left", bbox_to_anchor=(1.08, 1.1), frameon=False, labelcolor="#f4f3ff")
     fig.tight_layout()
@@ -234,9 +247,20 @@ def report_download(results, key: str) -> None:
 def render_radar(results) -> None:
     st.subheader("오디오 특징 프로필")
     st.caption("BPM, 에너지, 밝기, 리듬감을 0~100으로 정규화한 비교 지표입니다.")
-    figure = make_radar_figure(results)
-    st.pyplot(figure, use_container_width=True)
-    plt.close(figure)
+    chart_column, profile_column = st.columns([1, 1.15], gap="large")
+    with chart_column:
+        figure = make_radar_figure(results)
+        st.pyplot(figure, use_container_width=False)
+        plt.close(figure)
+    with profile_column:
+        st.markdown("##### 한눈에 보기")
+        for result in results[:4]:
+            profile = music_profile(result["stats"])
+            with st.container(border=True):
+                st.caption(result["file"].name)
+                metrics = st.columns(2)
+                for metric, (label, value) in zip(metrics * 2, profile.items()):
+                    metric.metric(label, f"{value:.0f}")
 
 
 def render_timeline(result) -> None:
@@ -250,8 +274,14 @@ def render_timeline(result) -> None:
         return
     timeline = pd.DataFrame(segments)
     timeline["구간"] = timeline.apply(lambda row: f"{row['시작(초)']:.0f}–{row['끝(초)']:.0f}초", axis=1)
-    st.dataframe(timeline[["구간", "장르", "신뢰도"]], hide_index=True, use_container_width=True)
-    st.bar_chart(timeline.set_index("구간")[["신뢰도"]], color="#9b8cff")
+    display = timeline[["구간", "장르", "신뢰도"]].copy()
+    display["신뢰도"] = display["신뢰도"].map(lambda value: f"{value:.0%}")
+    left, right = st.columns([1, 1.15], gap="large")
+    with left:
+        st.dataframe(display, hide_index=True, use_container_width=True, height=310)
+    with right:
+        st.caption("구간별 예측 신뢰도")
+        st.bar_chart(timeline.set_index("구간")[["신뢰도"]], color="#9b8cff", height=270)
 
 
 def share_payload(result) -> str:
@@ -273,34 +303,40 @@ def render_share_link(result) -> None:
     link = f"{base_url}?{urlencode({'view': 'shared', 'data': token})}"
     st.subheader("결과 공유")
     st.caption("오디오 파일은 포함하지 않고, 분석 요약만 담긴 링크입니다.")
-    st.code(link, language=None)
-    st.link_button("↗ 공유 결과 미리보기", link)
+    st.link_button("↗ 공유 결과 열기", link)
+    with st.expander("공유 링크 보기 · 복사"):
+        st.code(link, language=None)
 
 
 def render_feedback(result) -> None:
     st.subheader("예측 피드백")
-    answer = st.radio("이 예측이 맞나요?", ["맞아요", "아니에요"], horizontal=True, key=f"feedback_answer_{result['file'].name}")
-    correction = ""
-    if answer == "아니에요":
-        correction = st.selectbox("실제 장르를 선택하세요", GENRES, key=f"feedback_genre_{result['file'].name}")
-    if st.button("피드백 저장", key=f"feedback_save_{result['file'].name}"):
-        probabilities = result["probabilities"] or []
-        st.session_state.feedback.append({
-            "파일명": result["file"].name,
-            "예측 장르": probabilities[0][0] if probabilities else "모델 없음",
-            "예측 신뢰도": round(probabilities[0][1], 4) if probabilities else None,
-            "피드백": answer,
-            "실제 장르": correction or None,
-        })
-        st.success("피드백을 저장했습니다.")
-    if st.session_state.feedback:
-        st.download_button(
-            "📥 피드백 CSV 다운로드",
-            data=pd.DataFrame(st.session_state.feedback).to_csv(index=False).encode("utf-8-sig"),
-            file_name="music-lens-feedback.csv",
-            mime="text/csv",
-            key="download_feedback",
-        )
+    with st.container(border=True):
+        answer = st.radio("이 예측이 맞나요?", ["맞아요", "아니에요"], horizontal=True, key=f"feedback_answer_{result['file'].name}")
+        correction = ""
+        if answer == "아니에요":
+            correction = st.selectbox("실제 장르를 선택하세요", GENRES, key=f"feedback_genre_{result['file'].name}")
+        actions = st.columns([1, 3])
+        with actions[0]:
+            save = st.button("피드백 저장", key=f"feedback_save_{result['file'].name}")
+        with actions[1]:
+            if st.session_state.feedback:
+                st.download_button(
+                    "📥 피드백 CSV",
+                    data=pd.DataFrame(st.session_state.feedback).to_csv(index=False).encode("utf-8-sig"),
+                    file_name="music-lens-feedback.csv",
+                    mime="text/csv",
+                    key="download_feedback",
+                )
+        if save:
+            probabilities = result["probabilities"] or []
+            st.session_state.feedback.append({
+                "파일명": result["file"].name,
+                "예측 장르": probabilities[0][0] if probabilities else "모델 없음",
+                "예측 신뢰도": round(probabilities[0][1], 4) if probabilities else None,
+                "피드백": answer,
+                "실제 장르": correction or None,
+            })
+            st.success("피드백을 저장했습니다.")
 
 
 def decode_share_payload(token: str) -> dict[str, object] | None:
@@ -330,14 +366,14 @@ def render_single_result(result, top_n: int) -> None:
     uploaded, y, sr = result["file"], result["y"], result["sr"]
     stats, probabilities = result["stats"], result["probabilities"]
     st.audio(uploaded.getvalue(), format=uploaded.type or "audio/wav")
-    left, right = st.columns([1.0, 1.25], gap="large")
+    left, right = st.columns([.9, 1.1], gap="large")
     with left:
         st.subheader("장르 예측 결과")
         if probabilities:
             genre, confidence = probabilities[0]
             st.markdown(f'<div class="result-card"><span class="muted">TOP MATCH</span><h2>{GENRE_ICON.get(genre, "🎵")} {genre.upper()}</h2><p class="muted">신뢰도 {confidence:.1%}</p></div>', unsafe_allow_html=True)
             table = pd.DataFrame(probabilities[:top_n], columns=["장르", "확률"])
-            st.bar_chart(table.set_index("장르"), color="#9b8cff")
+            st.bar_chart(table.set_index("장르"), color="#9b8cff", height=250)
         else:
             st.warning("모델 파일 3개를 추가하면 실제 장르 예측이 표시됩니다.")
         metric_a, metric_b = st.columns(2)
@@ -348,12 +384,15 @@ def render_single_result(result, top_n: int) -> None:
     with right:
         st.subheader("멜스펙트로그램")
         figure = make_mel_figure(y, sr, uploaded.name)
-        st.pyplot(figure, use_container_width=True)
+        st.pyplot(figure, use_container_width=False)
         plt.close(figure)
     render_radar([result])
     render_timeline(result)
-    render_feedback(result)
-    render_share_link(result)
+    feedback_column, share_column = st.columns(2, gap="large")
+    with feedback_column:
+        render_feedback(result)
+    with share_column:
+        render_share_link(result)
 
 
 def render_lesson6() -> None:
@@ -407,7 +446,7 @@ def render_lesson7() -> None:
                 report_download(results, key="download_comparison")
                 if all(item["probabilities"] for item in results):
                     comparison = pd.DataFrame({item["file"].name: dict(item["probabilities"]) for item in results}).fillna(0)
-                    st.bar_chart(comparison, color=["#9b8cff", "#55d6be", "#ffba6a", "#ff7c9d"])
+                    st.bar_chart(comparison, color=["#9b8cff", "#55d6be", "#ffba6a", "#ff7c9d"], height=310)
                     rows = [{"파일명": item["file"].name, "1위 장르": item["probabilities"][0][0], "신뢰도": f"{item['probabilities'][0][1]:.1%}"} for item in results]
                     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
                 else:
