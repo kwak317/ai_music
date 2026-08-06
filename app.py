@@ -66,6 +66,11 @@ def inject_style() -> None:
         .stApp { background: #f2f4f6; color: #191f28; }
         .block-container, [data-testid="stMainBlockContainer"] { max-width: 1120px; padding-top: 2.75rem; padding-bottom: 5rem; }
         [data-testid="stSidebar"] { background: #ffffff; border-right: 1px solid #e5e8eb; }
+        [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3,
+        [data-testid="stSidebar"] p, [data-testid="stSidebar"] label, [data-testid="stSidebar"] span,
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] * { color: #191f28 !important; opacity: 1 !important; }
+        [data-testid="stSidebar"] [data-testid="stCaptionContainer"] *, [data-testid="stSidebar"] small { color: #6b7684 !important; }
+        [data-testid="stSidebar"] [data-baseweb="radio"] [aria-checked="true"] + div { color: #3182f6 !important; font-weight: 700; }
         .hero { padding: .35rem 0 1.75rem; }
         .hero h1 { color: #191f28; font-size: clamp(2.1rem, 4vw, 3.25rem); line-height: 1.14; letter-spacing: -.06em; margin: 0; }
         .hero p { color: #6b7684; font-size: 1.03rem; line-height: 1.65; margin: .65rem 0 0; max-width: 42rem; }
