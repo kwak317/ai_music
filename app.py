@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import os
 import tempfile
+import base64
+import json
 from pathlib import Path
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 import joblib
 import librosa
@@ -100,6 +103,40 @@ def make_mel_figure(y: np.ndarray, sr: int, title: str):
     return fig
 
 
+def music_profile(stats: dict[str, float]) -> dict[str, float]:
+    """Turn measurable audio features into a friendly 0–100 visual profile."""
+    bpm = min(stats["tempo"] / 200 * 100, 100)
+    energy = min(stats["rms_mean"] / 0.20 * 100, 100)
+    brightness = min(stats["spectral_centroid_mean"] / 5000 * 100, 100)
+    rhythm = min((bpm * 0.7) + (stats["zero_crossing_rate_mean"] / 0.12 * 30), 100)
+    return {"BPM": round(bpm, 1), "에너지": round(energy, 1), "밝기": round(brightness, 1), "리듬감": round(rhythm, 1)}
+
+
+def make_radar_figure(results):
+    labels = ["BPM", "에너지", "밝기", "리듬감"]
+    angles = np.linspace(0, 2 * np.pi, len(labels), endpoint=False).tolist()
+    angles += angles[:1]
+    fig, ax = plt.subplots(figsize=(6, 4.8), subplot_kw={"polar": True})
+    colors = ["#9b8cff", "#55d6be", "#ffba6a", "#ff7c9d"]
+    for index, result in enumerate(results):
+        profile = music_profile(result["stats"])
+        values = [profile[label] for label in labels] + [profile[labels[0]]]
+        color = colors[index % len(colors)]
+        ax.plot(angles, values, color=color, linewidth=2, label=result["file"].name)
+        ax.fill(angles, values, color=color, alpha=0.14)
+    ax.set_xticks(angles[:-1], labels)
+    ax.set_ylim(0, 100)
+    ax.set_yticks([25, 50, 75, 100], ["25", "50", "75", "100"], color="#aaa7c5")
+    ax.grid(color="#66618a", alpha=0.45)
+    ax.set_facecolor("#17192f")
+    fig.patch.set_facecolor("#17192f")
+    ax.tick_params(colors="#f4f3ff")
+    if len(results) > 1:
+        ax.legend(loc="upper left", bbox_to_anchor=(1.08, 1.1), frameon=False, labelcolor="#f4f3ff")
+    fig.tight_layout()
+    return fig
+
+
 def predict(vector: np.ndarray):
     models = load_models()
     if models is None:
@@ -149,6 +186,22 @@ def analyze(uploaded_file):
     return {"file": uploaded_file, "y": y, "sr": sr, "stats": stats, "probabilities": predict(vector)}
 
 
+def analyze_segments(result, segment_seconds: int = 3) -> list[dict[str, object]]:
+    """Predict every short section so genre changes are visible over time."""
+    y, sr = result["y"], result["sr"]
+    segments = []
+    for start in range(0, len(y), sr * segment_seconds):
+        clip = y[start : start + sr * segment_seconds]
+        if len(clip) < sr:
+            continue
+        vector, _ = extract_features(clip, sr)
+        probabilities = predict(vector)
+        if probabilities:
+            genre, confidence = probabilities[0]
+            segments.append({"시작(초)": start / sr, "끝(초)": min((start + len(clip)) / sr, len(y) / sr), "장르": genre, "신뢰도": confidence})
+    return segments
+
+
 def report_frame(results) -> pd.DataFrame:
     """Create a portable, one-row-per-file summary for CSV export."""
     rows = []
@@ -178,6 +231,101 @@ def report_download(results, key: str) -> None:
     )
 
 
+def render_radar(results) -> None:
+    st.subheader("오디오 특징 프로필")
+    st.caption("BPM, 에너지, 밝기, 리듬감을 0~100으로 정규화한 비교 지표입니다.")
+    figure = make_radar_figure(results)
+    st.pyplot(figure, use_container_width=True)
+    plt.close(figure)
+
+
+def render_timeline(result) -> None:
+    st.subheader("구간별 장르 분석")
+    if load_models() is None:
+        st.info("학습 모델 파일 3개를 추가하면 3초 단위 장르 타임라인을 볼 수 있습니다.")
+        return
+    segments = analyze_segments(result)
+    if not segments:
+        st.info("분석할 수 있는 구간이 충분하지 않습니다.")
+        return
+    timeline = pd.DataFrame(segments)
+    timeline["구간"] = timeline.apply(lambda row: f"{row['시작(초)']:.0f}–{row['끝(초)']:.0f}초", axis=1)
+    st.dataframe(timeline[["구간", "장르", "신뢰도"]], hide_index=True, use_container_width=True)
+    st.bar_chart(timeline.set_index("구간")[["신뢰도"]], color="#9b8cff")
+
+
+def share_payload(result) -> str:
+    probabilities = result["probabilities"] or []
+    payload = {
+        "file": result["file"].name,
+        "genre": probabilities[0][0] if probabilities else "모델 없음",
+        "confidence": round(probabilities[0][1], 4) if probabilities else None,
+        "profile": music_profile(result["stats"]),
+        "bpm": round(result["stats"]["tempo"], 1),
+    }
+    return base64.urlsafe_b64encode(json.dumps(payload, ensure_ascii=False).encode()).decode().rstrip("=")
+
+
+def render_share_link(result) -> None:
+    token = share_payload(result)
+    parsed = urlsplit(st.context.url)
+    base_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+    link = f"{base_url}?{urlencode({'view': 'shared', 'data': token})}"
+    st.subheader("결과 공유")
+    st.caption("오디오 파일은 포함하지 않고, 분석 요약만 담긴 링크입니다.")
+    st.code(link, language=None)
+    st.link_button("↗ 공유 결과 미리보기", link)
+
+
+def render_feedback(result) -> None:
+    st.subheader("예측 피드백")
+    answer = st.radio("이 예측이 맞나요?", ["맞아요", "아니에요"], horizontal=True, key=f"feedback_answer_{result['file'].name}")
+    correction = ""
+    if answer == "아니에요":
+        correction = st.selectbox("실제 장르를 선택하세요", GENRES, key=f"feedback_genre_{result['file'].name}")
+    if st.button("피드백 저장", key=f"feedback_save_{result['file'].name}"):
+        probabilities = result["probabilities"] or []
+        st.session_state.feedback.append({
+            "파일명": result["file"].name,
+            "예측 장르": probabilities[0][0] if probabilities else "모델 없음",
+            "예측 신뢰도": round(probabilities[0][1], 4) if probabilities else None,
+            "피드백": answer,
+            "실제 장르": correction or None,
+        })
+        st.success("피드백을 저장했습니다.")
+    if st.session_state.feedback:
+        st.download_button(
+            "📥 피드백 CSV 다운로드",
+            data=pd.DataFrame(st.session_state.feedback).to_csv(index=False).encode("utf-8-sig"),
+            file_name="music-lens-feedback.csv",
+            mime="text/csv",
+            key="download_feedback",
+        )
+
+
+def decode_share_payload(token: str) -> dict[str, object] | None:
+    try:
+        padded = token + "=" * (-len(token) % 4)
+        return json.loads(base64.urlsafe_b64decode(padded).decode())
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+
+def render_shared_result(payload: dict[str, object]) -> None:
+    st.markdown("<div class='hero'><div class='eyebrow'>MUSIC LENS · SHARED RESULT</div><h1>음악 분석 결과</h1></div>", unsafe_allow_html=True)
+    confidence = payload.get("confidence")
+    confidence_text = f" · 신뢰도 {float(confidence):.1%}" if confidence is not None else ""
+    st.success(f"🎧 {payload.get('file', '오디오')} · **{str(payload.get('genre', '-')).upper()}**{confidence_text}")
+    profile = payload.get("profile", {})
+    if isinstance(profile, dict):
+        columns = st.columns(4)
+        for column, (label, value) in zip(columns, profile.items()):
+            column.metric(str(label), f"{float(value):.0f}/100")
+    st.caption(f"추정 BPM: {payload.get('bpm', '-')}")
+    parsed = urlsplit(st.context.url)
+    st.link_button("내 음악 분석하기", urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", "")))
+
+
 def render_single_result(result, top_n: int) -> None:
     uploaded, y, sr = result["file"], result["y"], result["sr"]
     stats, probabilities = result["stats"], result["probabilities"]
@@ -202,6 +350,10 @@ def render_single_result(result, top_n: int) -> None:
         figure = make_mel_figure(y, sr, uploaded.name)
         st.pyplot(figure, use_container_width=True)
         plt.close(figure)
+    render_radar([result])
+    render_timeline(result)
+    render_feedback(result)
+    render_share_link(result)
 
 
 def render_lesson6() -> None:
@@ -251,6 +403,7 @@ def render_lesson7() -> None:
                 summary = report_frame(results)
                 metrics = summary[["파일명", "추정 BPM", "길이(초)", "스펙트럼 중심(Hz)", "RMS 에너지"]]
                 st.dataframe(metrics, hide_index=True, use_container_width=True)
+                render_radar(results)
                 report_download(results, key="download_comparison")
                 if all(item["probabilities"] for item in results):
                     comparison = pd.DataFrame({item["file"].name: dict(item["probabilities"]) for item in results}).fillna(0)
@@ -277,6 +430,16 @@ def main() -> None:
     if "history" not in st.session_state:
         st.session_state.history = []
         st.session_state.history_keys = set()
+    if "feedback" not in st.session_state:
+        st.session_state.feedback = []
+    query = st.query_params
+    if query.get("view") == "shared" and query.get("data"):
+        payload = decode_share_payload(query["data"])
+        if payload:
+            render_shared_result(payload)
+        else:
+            st.error("유효하지 않거나 손상된 공유 링크입니다.")
+        return
     with st.sidebar:
         st.header("MUSIC LENS")
         st.caption("AI Music lessons")
